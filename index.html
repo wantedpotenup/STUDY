@@ -6,6 +6,10 @@
   <title>팀 스터디 신청</title>
   <!-- Tailwind CDN: 빌드 도구 없이 유틸리티 클래스를 그대로 쓰기 위함 (인터넷 연결 필요) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 신청서 PDF 자동 생성용: 화면을 이미지로 캡처(html2canvas) 후 PDF로 변환(jsPDF).
+       한글은 jsPDF 기본 폰트로 그릴 수 없어서, 텍스트 대신 캡처한 이미지를 PDF에 넣는 방식을 씁니다. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Malgun Gothic', sans-serif; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -99,6 +103,7 @@
       adminList: function (password) { return apiGet('adminList', { password: password }); },
       adminGet: function (id, password) { return apiGet('adminGet', { id: id, password: password }); },
       createApplication: function (payload) { return apiPost('create', payload); },
+      attachApplicationPdf: function (payload) { return apiPost('attachApplicationPdf', payload); },
       approve: function (payload) { return apiPost('approve', payload); },
       reject: function (payload) { return apiPost('reject', payload); },
       submitReport: function (payload) { return apiPost('submitReport', payload); },
@@ -343,6 +348,90 @@
       wireStudyPlanEvents();
     }
 
+    // ----------------------------- 신청서 PDF 자동 생성 -----------------------------
+    // 신청 완료 시, 입력한 내용을 신청 화면과 비슷한 형태로 그려서 이미지로 캡처한 뒤
+    // PDF로 만들어 Drive "신청서" 폴더에 저장하고 URL을 시트에 기록합니다.
+
+    /** 신청 내용을 문서 형태로 보여주는 정적 HTML (PDF 캡처용, 실제 화면에는 안 보이게 렌더링) */
+    function buildApplicationPrintHtml(payload, headerLabel) {
+      function field(label, value) {
+        return '<div style="margin-bottom:16px;">' +
+          '<div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:4px;">' + escapeHtml(label) + '</div>' +
+          '<div style="font-size:14px;color:#0f172a;white-space:pre-wrap;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;background:#ffffff;">' + escapeHtml(value || '-') + '</div>' +
+          '</div>';
+      }
+
+      var supportLabel = (payload.supportItems && payload.supportItems.length) ? payload.supportItems.join(', ') : '없음';
+
+      var planRowsHtml = payload.studyPlan.map(function (row) {
+        return '<tr>' +
+          '<td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:600;white-space:nowrap;background:#fff;">' + escapeHtml(row.week) + '</td>' +
+          '<td style="padding:8px 12px;border:1px solid #e2e8f0;background:#fff;">' + escapeHtml(row.content || '') + '</td>' +
+          '</tr>';
+      }).join('');
+
+      return '<div style="width:680px;padding:32px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',\'Malgun Gothic\',sans-serif;">' +
+        '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">' + escapeHtml(headerLabel) + '</div>' +
+        '<h1 style="font-size:20px;font-weight:800;color:#0f172a;margin:0 0 20px 0;">팀 스터디 신청서</h1>' +
+        field('참여 과정', payload.courseName) +
+        field('이름', payload.applicantName) +
+        field('스터디명', payload.studyName) +
+        field('인원수', payload.memberCount + '명') +
+        field('스터디 소개 및 목표', payload.introGoal) +
+        field('팀원 명단', payload.memberList) +
+        field('희망 지원 항목', supportLabel) +
+        (payload.bookTitle ? field('도서명', payload.bookTitle) : '') +
+        '<div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px;">스터디 계획서</div>' +
+        '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 12px;border:1px solid #e2e8f0;background:#f1f5f9;width:70px;">주차</th>' +
+        '<th style="text-align:left;padding:8px 12px;border:1px solid #e2e8f0;background:#f1f5f9;">계획 내용</th>' +
+        '</tr></thead><tbody>' + planRowsHtml + '</tbody></table>' +
+        '</div>';
+    }
+
+    /**
+     * payload와 신청번호(id)를 받아 PDF를 만들고 base64로 반환합니다.
+     * html2canvas/jsPDF는 <head>에서 CDN으로 불러온 전역 객체(html2canvas, window.jspdf.jsPDF)를 사용합니다.
+     */
+    async function generateApplicationPdfBase64(applicationId, payload) {
+      var container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-99999px';
+      container.style.top = '0';
+      container.innerHTML = buildApplicationPrintHtml(payload, payload.courseName + ' · ' + applicationId);
+      document.body.appendChild(container);
+
+      try {
+        var canvas = await html2canvas(container.firstChild, { scale: 2, backgroundColor: '#f8fafc' });
+        var imgWidth = 210; // A4 가로(mm)
+        var pageHeight = 297; // A4 세로(mm)
+        var imgHeight = (canvas.height * imgWidth) / canvas.width;
+        var heightLeft = imgHeight;
+        var imgData = canvas.toDataURL('image/png');
+        var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+        var position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        var datauri = pdf.output('datauristring');
+        return {
+          base64: datauri.substring(datauri.indexOf(',') + 1),
+          filename: applicationId + '_신청서.pdf',
+          mimeType: 'application/pdf'
+        };
+      } finally {
+        document.body.removeChild(container);
+      }
+    }
+
     // ----------------------------- 신청 페이지 (작업지시서 4번, 원티드 스페이스 양식 반영) -----------------------------
 
     function validateApplicationPayload(p) {
@@ -441,6 +530,17 @@
 
       try {
         var application = await api.createApplication(payload);
+
+        // 신청서 PDF 생성/저장은 "베스트 에포트"입니다: 실패해도 신청 자체는 이미
+        // 완료된 상태이므로, 여기서 에러가 나도 완료 화면으로는 정상 이동시킵니다.
+        try {
+          btn.textContent = '신청서 PDF 저장 중...';
+          var pdfFile = await generateApplicationPdfBase64(application.id, payload);
+          await api.attachApplicationPdf({ id: application.id, file: pdfFile });
+        } catch (pdfErr) {
+          console.error('신청서 PDF 생성/저장에 실패했습니다:', pdfErr);
+        }
+
         location.hash = '#/complete/' + encodeURIComponent(application.id);
       } catch (err) {
         errBox.innerHTML = errorHtml(err.message);
@@ -451,12 +551,25 @@
 
     // ----------------------------- 신청 완료 안내 -----------------------------
 
-    function renderComplete(id) {
+    async function renderComplete(id) {
+      // 신청서 PDF는 신청 완료 직후 비동기로 저장되므로, 여기서 다시 조회해서
+      // 저장이 끝났으면 링크를 보여줍니다. (아직이거나 실패했으면 조용히 링크만 생략)
+      var pdfLinkHtml = '';
+      try {
+        var application = await api.getApplication(id);
+        if (application && application.applicationPdfUrl) {
+          pdfLinkHtml = '<p class="text-sm mb-6"><a href="' + escapeHtml(application.applicationPdfUrl) + '" target="_blank" rel="noreferrer" class="text-blue-600 hover:underline">신청서 PDF 보기</a></p>';
+        }
+      } catch (e) {
+        // 조회 실패해도 완료 화면 자체는 그대로 보여줍니다.
+      }
+
       var bodyHtml = card(
         '<div class="text-4xl mb-4">✅</div>' +
         '<h2 class="text-lg font-bold text-slate-900 mb-2">신청이 완료되었습니다</h2>' +
         '<p class="text-sm text-slate-500 mb-1">신청번호 <span class="font-semibold text-blue-600">' + escapeHtml(id) + '</span></p>' +
-        '<p class="text-sm text-slate-500 mb-8">관리자 승인 후 수행보고를 제출할 수 있어요.</p>' +
+        '<p class="text-sm text-slate-500 mb-4">관리자 승인 후 수행보고를 제출할 수 있어요.</p>' +
+        pdfLinkHtml +
         '<div class="flex justify-center gap-2">' +
         secondaryLink('#/', '신청 페이지로') +
         secondaryLink('#/report', '수행보고 제출 페이지로') +
@@ -856,6 +969,9 @@
       var rejectReasonHtml = application.rejectReason
         ? '<div><dt class="text-xs font-semibold text-slate-400 mb-1">반려 사유</dt><dd class="text-sm text-rose-600 whitespace-pre-wrap">' + escapeHtml(application.rejectReason) + '</dd></div>'
         : '';
+      var applicationPdfHtml = application.applicationPdfUrl
+        ? '<div><dt class="text-xs font-semibold text-slate-400 mb-1">신청서 PDF</dt><dd class="text-sm"><a href="' + escapeHtml(application.applicationPdfUrl) + '" target="_blank" rel="noreferrer" class="text-blue-600 hover:underline">PDF 열기</a></dd></div>'
+        : '';
 
       var summaryCard = card(
         '<div class="flex items-start justify-between mb-6">' +
@@ -863,7 +979,7 @@
         '<h2 class="text-lg font-bold text-slate-900">' + escapeHtml(application.studyName) + '</h2>' +
         '<p class="text-sm text-slate-500 mt-1">' + escapeHtml(application.applicantName) + ' · 신청일 ' + escapeHtml(application.createdAt) + '</p></div>' +
         statusBadge(application.status) + '</div>' +
-        '<dl class="space-y-4 mb-6">' + basicRows + supportHtml + bookHtml + approverCommentHtml + rejectReasonHtml + '</dl>' +
+        '<dl class="space-y-4 mb-6">' + basicRows + supportHtml + bookHtml + applicationPdfHtml + approverCommentHtml + rejectReasonHtml + '</dl>' +
         '<div><dt class="text-xs font-semibold text-slate-400 mb-2">스터디 계획서</dt><dd>' + renderStudyPlanReadOnly(application.studyPlan) + '</dd></div>'
       );
 
