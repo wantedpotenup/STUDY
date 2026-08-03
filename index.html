@@ -34,7 +34,7 @@
      * Apps Script를 "웹 앱"으로 배포했을 때 나오는 주소를 붙여넣어주세요.
      * (예: https://script.google.com/macros/s/AKfycb.../exec)
      */
-    var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbww_kxbO_vB8CW5_Z4kXpRwmUooRFi-ayO7oRJDXlJ_tEkBOXH9ecn0d_ZnCk_eP9Sm5Q/exec';
+    var GAS_API_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
     // 원티드 로고 (구글 드라이브 공유 이미지, thumbnail 엔드포인트 사용 - uc?export=view보다 핫링크가 안정적임).
     // 다른 이미지로 바꾸고 싶으면 이 URL의 id= 값만 교체하면 됩니다. (드라이브 파일이 "링크가 있는 모든 사용자"로 공유되어 있어야 함)
@@ -275,18 +275,38 @@
     window.addEventListener('DOMContentLoaded', router);
 
     // ----------------------------- 과정 드롭다운(공용) -----------------------------
+    // 과정 목록은 탭(신청/보고서)을 옮길 때마다 매번 새로 불러오면 그때마다
+    // 서버 왕복이 생겨 화면 전환이 느리게 느껴집니다. 페이지를 새로고침하기 전까지는
+    // 거의 안 바뀌는 값이므로, 한 번 성공하면 메모리에 캐시해두고 재사용합니다.
+    var _courseOptionsCache = null; // 성공한 결과만 캐시 (실패는 캐시하지 않아 다음 시도 때 재요청)
+    var _courseOptionsPromise = null; // 여러 화면에서 동시에 요청해도 fetch가 한 번만 나가도록
 
-    async function loadCourseOptionsHtml() {
-      try {
-        var courses = await api.getCourses();
-        return {
-          error: null,
-          html: '<option value="">참여 과정을 선택해주세요</option>' +
-            courses.map(function (c) { return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>'; }).join('')
-        };
-      } catch (err) {
-        return { error: err.message, html: '<option value="">과정 목록을 불러오지 못했습니다</option>' };
-      }
+    function hasCachedCourseOptions() {
+      return !!_courseOptionsCache;
+    }
+
+    function loadCourseOptionsHtml() {
+      if (_courseOptionsCache) return Promise.resolve(_courseOptionsCache);
+      if (_courseOptionsPromise) return _courseOptionsPromise;
+
+      _courseOptionsPromise = (async function () {
+        try {
+          var courses = await api.getCourses();
+          var result = {
+            error: null,
+            html: '<option value="">참여 과정을 선택해주세요</option>' +
+              courses.map(function (c) { return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>'; }).join('')
+          };
+          _courseOptionsCache = result;
+          return result;
+        } catch (err) {
+          return { error: err.message, html: '<option value="">과정 목록을 불러오지 못했습니다</option>' };
+        } finally {
+          _courseOptionsPromise = null;
+        }
+      })();
+
+      return _courseOptionsPromise;
     }
 
     // ----------------------------- 스터디 계획서 (주차별 표) -----------------------------
@@ -448,8 +468,11 @@
     }
 
     async function renderApply() {
-      setApp(page('apply', loadingHtml('과정 목록을 불러오는 중...')));
-      wireCommonEvents();
+      // 과정 목록이 이미 캐시돼 있으면 로딩 화면을 거치지 않고 바로 폼을 그립니다.
+      if (!hasCachedCourseOptions()) {
+        setApp(page('apply', loadingHtml('과정 목록을 불러오는 중...')));
+        wireCommonEvents();
+      }
 
       var courseOptions = await loadCourseOptionsHtml();
       resetStudyPlanRows();
@@ -624,8 +647,11 @@
 
     /** 신청번호를 몰라도 되도록, 과정명 + 이름으로 본인 신청 내역을 찾는 화면 */
     async function renderReportSearch() {
-      setApp(page('report', loadingHtml('과정 목록을 불러오는 중...')));
-      wireCommonEvents();
+      // 과정 목록이 이미 캐시돼 있으면 로딩 화면을 거치지 않고 바로 폼을 그립니다.
+      if (!hasCachedCourseOptions()) {
+        setApp(page('report', loadingHtml('과정 목록을 불러오는 중...')));
+        wireCommonEvents();
+      }
 
       var courseOptions = await loadCourseOptionsHtml();
 
