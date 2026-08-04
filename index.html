@@ -110,6 +110,10 @@
       markComplete: function (payload) { return apiPost('markComplete', payload); }
     };
 
+    // 신청서 PDF 생성/저장 실패 사유를 완료 화면에서 보여주기 위한 임시 저장소.
+    // (같은 페이지 안에서 신청 제출 직후 곧바로 완료 화면으로 넘어가므로 메모리 변수로 충분합니다)
+    var _lastPdfError = null;
+
     // 관리자 비밀번호는 세션에만 저장합니다 (탭을 닫으면 사라짐, 정식 로그인 기능 전 임시 방편)
     var ADMIN_STORAGE_KEY = 'team-study-admin-password';
     function saveAdminPassword(p) { sessionStorage.setItem(ADMIN_STORAGE_KEY, p); }
@@ -423,21 +427,23 @@
       document.body.appendChild(container);
 
       try {
-        var canvas = await html2canvas(container.firstChild, { scale: 2, backgroundColor: '#f8fafc' });
+        // scale은 1.5면 충분히 선명합니다(2는 픽셀 수가 4배라 캡처/인코딩이 눈에 띄게 느려짐).
+        var canvas = await html2canvas(container.firstChild, { scale: 1.5, backgroundColor: '#f8fafc' });
         var imgWidth = 210; // A4 가로(mm)
         var pageHeight = 297; // A4 세로(mm)
         var imgHeight = (canvas.height * imgWidth) / canvas.width;
         var heightLeft = imgHeight;
-        var imgData = canvas.toDataURL('image/png');
+        // 텍스트/표 위주 문서라 PNG보다 JPEG(품질 0.92)이 인코딩도 빠르고 용량도 훨씬 작습니다.
+        var imgData = canvas.toDataURL('image/jpeg', 0.92);
         var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
         var position = 0;
 
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
         while (heightLeft > 0) {
           position = heightLeft - imgHeight;
           pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
         }
 
@@ -554,15 +560,11 @@
       try {
         var application = await api.createApplication(payload);
 
-        // 신청서 PDF 생성/저장은 "베스트 에포트"입니다: 실패해도 신청 자체는 이미
-        // 완료된 상태이므로, 여기서 에러가 나도 완료 화면으로는 정상 이동시킵니다.
-        try {
-          btn.textContent = '신청서 PDF 저장 중...';
-          var pdfFile = await generateApplicationPdfBase64(application.id, payload);
-          await api.attachApplicationPdf({ id: application.id, file: pdfFile });
-        } catch (pdfErr) {
-          console.error('신청서 PDF 생성/저장에 실패했습니다:', pdfErr);
-        }
+        // 신청서 PDF 생성/저장은 신청 완료 자체와 분리된 "베스트 에포트" 후속 작업입니다.
+        // 화면 캡처 + PDF 변환 + 업로드가 몇 초 걸리는데, 이걸 기다렸다가 완료 화면으로
+        // 넘어가면 신청 자체는 이미 끝났는데도 사용자는 계속 기다리게 됩니다. 그래서 여기서
+        // await 하지 않고 완료 화면으로 먼저 이동시키고, PDF 생성은 뒤에서 계속 진행합니다.
+        generateAndAttachApplicationPdf_(application.id, payload);
 
         location.hash = '#/complete/' + encodeURIComponent(application.id);
       } catch (err) {
@@ -572,20 +574,54 @@
       }
     }
 
+    /**
+     * 신청서 PDF를 생성해서 저장합니다. handleApplySubmit에서 완료 화면으로 넘어간 뒤에도
+     * 백그라운드에서 계속 실행되며, 끝나면 완료 화면이 아직 열려 있을 경우 그 자리에서 링크를 채워줍니다.
+     */
+    async function generateAndAttachApplicationPdf_(applicationId, payload) {
+      try {
+        var pdfFile = await generateApplicationPdfBase64(applicationId, payload);
+        var updated = await api.attachApplicationPdf({ id: applicationId, file: pdfFile });
+        notifyPdfReadyIfShowing_(applicationId, updated && updated.applicationPdfUrl, null);
+      } catch (pdfErr) {
+        console.error('신청서 PDF 생성/저장에 실패했습니다:', pdfErr);
+        var message = (pdfErr && pdfErr.message) ? pdfErr.message : String(pdfErr);
+        _lastPdfError = message;
+        notifyPdfReadyIfShowing_(applicationId, null, message);
+      }
+    }
+
+    /** 완료 화면 안의 PDF 상태 영역(#pdfStatusArea) HTML을 만듭니다. */
+    function pdfStatusHtml_(pdfUrl, errorMessage) {
+      if (pdfUrl) {
+        return '<p class="text-sm"><a href="' + escapeHtml(pdfUrl) + '" target="_blank" rel="noreferrer" class="text-blue-600 hover:underline">신청서 PDF 보기</a></p>';
+      }
+      if (errorMessage) {
+        return '<p class="text-xs text-rose-500">신청서 PDF 저장에 실패했습니다: ' + escapeHtml(errorMessage) + '</p>';
+      }
+      return '<p class="text-xs text-slate-400">신청서 PDF를 생성하고 있어요. 잠시 후 자동으로 표시됩니다.</p>';
+    }
+
+    /**
+     * 백그라운드 PDF 작업이 끝났을 때, 지금 화면이 마침 그 신청의 완료 화면이라면
+     * 새로고침 없이 그 자리에서 상태 영역을 갱신합니다. (다른 화면으로 이미 이동했다면 아무것도 안 함)
+     */
+    function notifyPdfReadyIfShowing_(applicationId, pdfUrl, errorMessage) {
+      var parts = getRouteParts();
+      if (parts[0] !== 'complete' || parts[1] !== applicationId) return;
+      var el = document.getElementById('pdfStatusArea');
+      if (!el) return;
+      el.innerHTML = pdfStatusHtml_(pdfUrl, errorMessage);
+      _lastPdfError = null; // 화면에 이미 보여줬으니 초기화
+    }
+
     // ----------------------------- 신청 완료 안내 -----------------------------
 
     async function renderComplete(id) {
-      // 신청서 PDF는 신청 완료 직후 비동기로 저장되므로, 여기서 다시 조회해서
-      // 저장이 끝났으면 링크를 보여줍니다. (아직이거나 실패했으면 조용히 링크만 생략)
-      var pdfLinkHtml = '';
-      try {
-        var application = await api.getApplication(id);
-        if (application && application.applicationPdfUrl) {
-          pdfLinkHtml = '<p class="text-sm mb-6"><a href="' + escapeHtml(application.applicationPdfUrl) + '" target="_blank" rel="noreferrer" class="text-blue-600 hover:underline">신청서 PDF 보기</a></p>';
-        }
-      } catch (e) {
-        // 조회 실패해도 완료 화면 자체는 그대로 보여줍니다.
-      }
+      // PDF는 백그라운드에서 만들어지는 중일 수 있으므로, 완료 화면 자체는 기다리지 않고
+      // 곧바로 그려서 사용자가 빨리 결과를 볼 수 있게 합니다. PDF 상태는 아래에서 비동기로 채웁니다.
+      var hadStaleError = !!_lastPdfError;
+      var pdfLinkHtml = '<div id="pdfStatusArea" class="mb-1">' + pdfStatusHtml_(null, _lastPdfError) + '</div>';
 
       var bodyHtml = card(
         '<div class="text-4xl mb-4">✅</div>' +
@@ -601,6 +637,22 @@
       );
       setApp(page('apply', bodyHtml));
       wireCommonEvents();
+
+      if (hadStaleError) {
+        _lastPdfError = null; // 이미 화면에 보여줬으니 초기화(다른 완료 화면에 남아있지 않도록)
+        return;
+      }
+
+      // 백그라운드 PDF 작업이 이 화면을 그리기 전에 이미 끝나 있었을 수도 있으니 한 번 확인합니다.
+      // (보통은 조금 뒤 generateAndAttachApplicationPdf_ → notifyPdfReadyIfShowing_로 자동 갱신됩니다)
+      try {
+        var application = await api.getApplication(id);
+        if (application && application.applicationPdfUrl) {
+          notifyPdfReadyIfShowing_(id, application.applicationPdfUrl, null);
+        }
+      } catch (e) {
+        // 조회 실패해도 완료 화면 자체는 그대로 둡니다.
+      }
     }
 
     // ----------------------------- 수행보고 제출 (작업지시서 7번) -----------------------------
