@@ -51,6 +51,23 @@
       });
     }
 
+    /**
+     * 프로미스가 지정된 시간(ms) 안에 끝나지 않으면 대신 에러로 처리합니다.
+     * 신청서 PDF 생성/업로드처럼 "실패해도 신청 흐름 자체는 막으면 안 되는" 작업에,
+     * 예상치 못한 이유로 응답이 영영 안 오는 경우까지 대비하기 위한 안전장치입니다.
+     */
+    function withTimeout_(promise, ms, timeoutMessage) {
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () {
+          reject(new Error(timeoutMessage || (ms + 'ms 안에 끝나지 않았습니다.')));
+        }, ms);
+        promise.then(
+          function (value) { clearTimeout(timer); resolve(value); },
+          function (error) { clearTimeout(timer); reject(error); }
+        );
+      });
+    }
+
     /** GAS_API_URL이 설정되어 있는지 확인합니다. */
     function assertApiUrlConfigured_() {
       if (!GAS_API_URL || GAS_API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE') !== -1) {
@@ -438,9 +455,19 @@
       try {
         // scale은 1.5면 충분히 선명합니다(2는 픽셀 수가 4배라 캡처/인코딩이 눈에 띄게 느려짐).
         var canvas = await html2canvas(container.firstChild, { scale: 1.5, backgroundColor: '#f8fafc' });
+
+        // 방어 코드: canvas 크기가 비정상(0 등)이면 아래 나누기에서 Infinity/NaN이 나와
+        // 페이지 나누기 while문이 끝나지 않고 탭이 멈춰버릴 수 있습니다. 미리 에러로 처리합니다.
+        if (!canvas || !canvas.width || !canvas.height) {
+          throw new Error('화면 캡처 결과가 비정상입니다(canvas 크기 0).');
+        }
+
         var imgWidth = 210; // A4 가로(mm)
         var pageHeight = 297; // A4 세로(mm)
         var imgHeight = (canvas.height * imgWidth) / canvas.width;
+        if (!isFinite(imgHeight) || imgHeight <= 0) {
+          throw new Error('PDF 페이지 크기 계산에 실패했습니다.');
+        }
         var heightLeft = imgHeight;
         // 텍스트/표 위주 문서라 PNG보다 JPEG(품질 0.92)이 인코딩도 빠르고 용량도 훨씬 작습니다.
         var imgData = canvas.toDataURL('image/jpeg', 0.92);
@@ -449,11 +476,17 @@
 
         pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
-        while (heightLeft > 0) {
+
+        // 안전장치: 위 imgHeight 계산이 정상이면 이 루프는 몇 페이지 안에 끝나지만,
+        // 혹시 모를 이상 상황에서 무한 루프로 탭이 멈추는 일이 없도록 최대 페이지 수를 제한합니다.
+        var MAX_PAGES = 30;
+        var pageCount = 1;
+        while (heightLeft > 0 && pageCount < MAX_PAGES) {
           position = heightLeft - imgHeight;
           pdf.addPage();
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
+          pageCount++;
         }
 
         var datauri = pdf.output('datauristring');
@@ -573,10 +606,11 @@
         // 순서대로 하지 않고 동시에 시작합니다. PDF는 신청번호 없이도 만들 수 있어서
         // 서버 응답을 기다릴 필요가 없거든요 — 덕분에 전체 처리 시간이 줄어듭니다.
         var createPromise = api.createApplication(payload);
-        var pdfPromise = generateApplicationPdfBase64(payload).catch(function (pdfErr) {
-          console.error('신청서 PDF 생성에 실패했습니다:', pdfErr);
-          return { __error: (pdfErr && pdfErr.message) ? pdfErr.message : String(pdfErr) };
-        });
+        var pdfPromise = withTimeout_(generateApplicationPdfBase64(payload), 20000, 'PDF 생성이 20초 안에 끝나지 않았습니다.')
+          .catch(function (pdfErr) {
+            console.error('신청서 PDF 생성에 실패했습니다:', pdfErr);
+            return { __error: (pdfErr && pdfErr.message) ? pdfErr.message : String(pdfErr) };
+          });
 
         // 신청 생성이 실패하면(=신청 자체가 안 된 것) 아래 catch로 바로 빠집니다.
         var application = await createPromise;
@@ -589,7 +623,11 @@
           _lastPdfError = pdfFile.__error;
         } else if (pdfFile) {
           try {
-            await api.attachApplicationPdf({ id: application.id, file: pdfFile });
+            await withTimeout_(
+              api.attachApplicationPdf({ id: application.id, file: pdfFile }),
+              20000,
+              'PDF 업로드가 20초 안에 끝나지 않았습니다.'
+            );
           } catch (attachErr) {
             console.error('신청서 PDF 저장에 실패했습니다:', attachErr);
             _lastPdfError = (attachErr && attachErr.message) ? attachErr.message : String(attachErr);
