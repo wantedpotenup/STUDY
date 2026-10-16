@@ -302,7 +302,13 @@
       var brandHtml = IS_EMBEDDED ? '' :
         '<div class="h-14 flex items-center whitespace-nowrap text-sm">' + BRAND_LOGO_HTML + '</div>';
 
-      return '<header class="bg-white border-b border-slate-200/70 ' + (IS_EMBEDDED ? '' : 'sticky top-0 z-10') + '">' +
+      // 포털 안에서는 흰 띠(헤더 배경) 없이 회색 바탕 위에 탭만 놓아서, 포털 화면과 자연스럽게 이어지게 해요.
+      if (IS_EMBEDDED) {
+        return '<header class="max-w-5xl mx-auto px-4 sm:px-6 pt-6">' +
+          '<nav class="flex items-end gap-6 overflow-x-auto border-b border-slate-200" aria-label="팀 스터디 메뉴">' + tabsHtml + rightHtml + '</nav>' +
+          '</header>';
+      }
+      return '<header class="bg-white border-b border-slate-200/70 sticky top-0 z-10">' +
         '<div class="max-w-5xl mx-auto px-4 sm:px-6">' + brandHtml +
         '<nav class="flex items-end gap-6 overflow-x-auto" aria-label="팀 스터디 메뉴">' + tabsHtml + rightHtml + '</nav>' +
         '</div></header>';
@@ -313,10 +319,37 @@
     /** 공통 페이지 레이아웃: 상단 탭 + 본문 영역 */
     function page(activeKey, bodyHtml, maxWidthClass) {
       maxWidthClass = maxWidthClass || 'max-w-3xl';
-      return '<div class="min-h-screen bg-slate-50">' +
+      // 포털 안에서는 화면 높이를 내용에 맞춰 알려주므로 min-h-screen을 쓰지 않아요.
+      return '<div class="' + (IS_EMBEDDED ? '' : 'min-h-screen ') + 'bg-slate-50">' +
         navBar(activeKey) +
         '<main class="' + maxWidthClass + ' mx-auto px-4 sm:px-6 py-8 sm:py-10">' + bodyHtml + '</main>' +
         '</div>';
+    }
+
+    // WANTED GROUND(포털) 안에 들어가 있으면 내용 높이를 포털에 알려서, 이중 스크롤 없이 한 화면처럼 보이게 해요.
+    (function () {
+      if (!IS_EMBEDDED || !window.ResizeObserver) return;
+      var last = 0;
+      function send() {
+        var h = Math.ceil(document.body.scrollHeight);
+        if (Math.abs(h - last) < 2) return;
+        last = h;
+        window.parent.postMessage({ type: 'wg-height', height: h }, '*');
+      }
+      new ResizeObserver(send).observe(document.body);
+      window.addEventListener('load', send);
+      window.addEventListener('hashchange', function () { setTimeout(send, 50); window.parent.postMessage({ type: 'wg-scroll-top' }, '*'); });
+    })();
+
+    /** "2026-10-16T11:06:31.000Z" 같은 값을 "2026-10-16 20:06" (한국 시간)으로 바꿔요. */
+    function fmtDateTime(v) {
+      if (!v) return '';
+      var s = String(v);
+      if (!/^\d{4}-\d{2}-\d{2}T/.test(s)) return s;
+      var d = new Date(s);
+      if (isNaN(d.getTime())) return s;
+      function p(n) { return String(n).padStart(2, '0'); }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
 
     /** page()로 렌더링한 뒤 공통으로 필요한 이벤트(로그아웃 버튼 등)를 걸어줍니다. */
@@ -694,26 +727,20 @@
         // 신청 생성이 실패하면(=신청 자체가 안 된 것) 아래 catch로 바로 빠집니다.
         var application = await createPromise;
 
-        btn.textContent = '신청서 PDF 저장 중...';
-        // create와 동시에 진행되고 있었으므로, 보통 여기서 추가로 기다리는 시간은 거의 없습니다.
-        var pdfFile = await pdfPromise;
-
-        if (pdfFile && pdfFile.__error) {
-          _lastPdfError = pdfFile.__error;
-        } else if (pdfFile) {
-          try {
-            await withTimeout_(
+        // ⚡ 신청이 접수되면 바로 완료 화면을 보여주고, PDF 저장(업로드)은 완료 화면에서 이어서 진행해요.
+        //    (예전에는 PDF 업로드가 끝날 때까지 버튼에서 기다려야 해서 느리게 느껴졌어요)
+        _pendingPdf = {
+          id: application.id,
+          promise: (async function () {
+            var pdfFile = await pdfPromise;
+            if (pdfFile && pdfFile.__error) throw new Error(pdfFile.__error);
+            return withTimeout_(
               api.attachApplicationPdf({ id: application.id, file: pdfFile }),
-              20000,
-              'PDF 업로드가 20초 안에 끝나지 않았습니다.'
+              30000,
+              'PDF 업로드가 30초 안에 끝나지 않았습니다.'
             );
-          } catch (attachErr) {
-            console.error('신청서 PDF 저장에 실패했습니다:', attachErr);
-            _lastPdfError = (attachErr && attachErr.message) ? attachErr.message : String(attachErr);
-          }
-        }
-
-        // 신청 접수는 이미 됐으니, PDF 저장에 문제가 있었어도 완료 화면으로는 정상 이동시킵니다.
+          })()
+        };
         location.hash = '#/complete/' + encodeURIComponent(application.id);
       } catch (err) {
         errBox.innerHTML = errorHtml(err.message);
@@ -735,23 +762,15 @@
 
     // ----------------------------- 신청 완료 안내 -----------------------------
 
+    var _pendingPdf = null; // 신청 직후 백그라운드로 진행 중인 PDF 저장 { id, promise }
+
+    // PDF 저장 중에 창을 닫으면 PDF가 빠질 수 있어서 한 번 물어봐요.
+    window.addEventListener('beforeunload', function (e) {
+      if (_pendingPdf) { e.preventDefault(); e.returnValue = ''; }
+    });
+
     async function renderComplete(id) {
-      // 이 시점에는 handleApplySubmit이 신청서 PDF 생성/저장까지 이미 끝낸 뒤 넘어온 것이므로
-      // (성공했으면 시트에 URL이 저장돼 있고, 실패했으면 _lastPdfError에 사유가 들어있음)
-      // 여기서는 그 결과를 조회해서 보여주기만 하면 됩니다.
-      var pdfLinkHtml = '';
-      try {
-        var application = await api.getApplication(id);
-        if (application && application.applicationPdfUrl) {
-          pdfLinkHtml = pdfStatusHtml_(application.applicationPdfUrl, null);
-        } else if (_lastPdfError) {
-          pdfLinkHtml = pdfStatusHtml_(null, _lastPdfError);
-        }
-      } catch (e) {
-        if (_lastPdfError) pdfLinkHtml = pdfStatusHtml_(null, _lastPdfError);
-      } finally {
-        _lastPdfError = null; // 한 번 보여줬으면 초기화 (다른 완료 화면에 남아있지 않도록)
-      }
+      var pdfLinkHtml = '<div id="pdfStatus" class="mb-6 min-h-[20px]"></div>';
 
       var bodyHtml = card(
         '<div class="mx-auto mb-4 w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">' + ICON_CHECK_CIRCLE + '</div>' +
@@ -767,6 +786,36 @@
       );
       setApp(page('apply', bodyHtml));
       wireCommonEvents();
+
+      var box = document.getElementById('pdfStatus');
+      function show(html) { var el = document.getElementById('pdfStatus'); if (el) el.innerHTML = html; }
+
+      // 1) 방금 신청한 건이면 PDF 저장이 끝나기를 기다리면서 진행 상태를 보여줘요.
+      if (_pendingPdf && _pendingPdf.id === id) {
+        show('<p class="inline-flex items-center gap-2 text-sm text-slate-500">' +
+          '<span class="w-4 h-4 border-2 border-slate-200 border-t-blue-600 rounded-full spinner"></span>' +
+          '신청서 PDF를 저장하고 있어요. 잠시만 이 창을 닫지 말아주세요.</p>');
+        try {
+          await _pendingPdf.promise;
+        } catch (err) {
+          console.error('신청서 PDF 저장에 실패했습니다:', err);
+          _pendingPdf = null;
+          show('<p class="text-xs text-rose-500">신청서 PDF 저장에 실패했습니다: ' + escapeHtml(err.message || String(err)) + '<br>신청은 정상 접수되었어요. 운영팀에 알려주세요.</p>');
+          return;
+        }
+        _pendingPdf = null;
+      }
+
+      // 2) 저장된 PDF 링크를 조회해서 보여줘요.
+      if (!box) return;
+      try {
+        var application = await api.getApplication(id);
+        show(application && application.applicationPdfUrl
+          ? pdfStatusHtml_(application.applicationPdfUrl, null).replace('mb-6', '')
+          : '<p class="text-sm text-emerald-600 font-medium">신청서 PDF가 저장되었어요.</p>');
+      } catch (e) {
+        show('');
+      }
     }
 
     // ----------------------------- 수행보고 제출 (작업지시서 7번) -----------------------------
@@ -880,7 +929,7 @@
           '<div class="flex items-center justify-between gap-3">' +
           '<span class="font-medium text-slate-800 truncate">' + escapeHtml(r.studyName) + '</span>' + statusBadge(r.status) +
           '</div>' +
-          '<div class="text-xs text-slate-400 mt-1">' + escapeHtml(r.createdAt) + ' · ' + escapeHtml(r.id) + '</div>' +
+          '<div class="text-xs text-slate-400 mt-1">' + escapeHtml(fmtDateTime(r.createdAt)) + ' · ' + escapeHtml(r.id) + '</div>' +
           '</button>';
       }).join('');
 
@@ -1068,7 +1117,7 @@
         var rows = applications.map(function (a) {
           return '<tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="location.hash=\'#/admin/detail/' + encodeURIComponent(a.id) + '\'">' +
             '<td class="px-4 py-3 font-medium text-slate-700">' + escapeHtml(a.id) + '</td>' +
-            '<td class="px-4 py-3 text-slate-500">' + escapeHtml(a.createdAt) + '</td>' +
+            '<td class="px-4 py-3 text-slate-500">' + escapeHtml(fmtDateTime(a.createdAt)) + '</td>' +
             '<td class="px-4 py-3 text-slate-600">' + escapeHtml(a.courseName) + '</td>' +
             '<td class="px-4 py-3 text-slate-600">' + escapeHtml(a.applicantName) + '</td>' +
             '<td class="px-4 py-3 text-slate-600 max-w-xs truncate">' + escapeHtml(a.studyName) + '</td>' +
@@ -1171,7 +1220,7 @@
         '<div class="flex items-start justify-between mb-6">' +
         '<div><p class="text-sm text-slate-500">' + escapeHtml(application.courseName) + '</p>' +
         '<h2 class="text-lg font-bold text-slate-900">' + escapeHtml(application.studyName) + '</h2>' +
-        '<p class="text-sm text-slate-500 mt-1">' + escapeHtml(application.applicantName) + ' · 신청일 ' + escapeHtml(application.createdAt) + '</p></div>' +
+        '<p class="text-sm text-slate-500 mt-1">' + escapeHtml(application.applicantName) + ' · 신청일 ' + escapeHtml(fmtDateTime(application.createdAt)) + '</p></div>' +
         statusBadge(application.status) + '</div>' +
         '<dl class="space-y-4 mb-6">' + basicRows + supportHtml + bookHtml + applicationPdfHtml + approverCommentHtml + rejectReasonHtml + '</dl>' +
         '<div><dt class="text-xs font-semibold text-slate-400 mb-2">스터디 계획서</dt><dd>' + renderStudyPlanReadOnly(application.studyPlan) + '</dd></div>'
