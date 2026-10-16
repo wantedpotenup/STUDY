@@ -6,14 +6,62 @@
   <title>팀 스터디 신청</title>
   <!-- Tailwind CDN: 빌드 도구 없이 유틸리티 클래스를 그대로 쓰기 위함 (인터넷 연결 필요) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // 원티드 디자인 시스템(Montage) 색상으로 기본 팔레트를 바꿔요.
+    // 기존 화면 코드의 blue/slate/rose 클래스가 그대로 Montage 색으로 보이게 됩니다.
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Pretendard Variable"', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', '"Malgun Gothic"', 'sans-serif'] },
+          colors: {
+            blue:    { 50:'#EAF2FE', 100:'#C9DEFE', 200:'#9EC5FF', 300:'#69A5FF', 400:'#3385FF', 500:'#0066FF', 600:'#0066FF', 700:'#005EEB', 800:'#0054D1', 900:'#003E9C' },
+            slate:   { 50:'#F7F7F8', 100:'#F4F4F5', 200:'#E1E2E4', 300:'#C2C4C8', 400:'#989BA2', 500:'#70737C', 600:'#5A5C63', 700:'#46474C', 800:'#2E2F33', 900:'#171719' },
+            rose:    { 50:'#FFF1F1', 100:'#FFE1E1', 200:'#FFB5B5', 300:'#FF8C8C', 400:'#FF6363', 500:'#FF4242', 600:'#E52222', 700:'#B20C0C' },
+            emerald: { 50:'#E6F9ED', 100:'#D4F6DF', 500:'#00BF40', 600:'#00A13A', 700:'#008A32' }
+          },
+          borderRadius: { lg: '12px', xl: '14px', '2xl': '16px' }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <!-- 신청서 PDF 자동 생성용: 화면을 이미지로 캡처(html2canvas) 후 PDF로 변환(jsPDF).
        한글은 jsPDF 기본 폰트로 그릴 수 없어서, 텍스트 대신 캡처한 이미지를 PDF에 넣는 방식을 씁니다. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Malgun Gothic', sans-serif; }
+    body { font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; -webkit-font-smoothing: antialiased; color: #171719; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { animation: spin 0.8s linear infinite; }
+
+    /* ===== Montage 공통 컴포넌트 ===== */
+    .m-input { width: 100%; height: 48px; padding: 12px; border: 0; border-radius: 12px; background: #fff; font-size: 16px; line-height: 24px; color: #171719;
+               box-shadow: inset 0 0 0 1px rgba(112,115,124,0.22); }
+    textarea.m-input { height: auto; resize: vertical; }
+    .m-input:focus { outline: none; box-shadow: inset 0 0 0 2px #0066FF; }
+    .m-input::placeholder { color: rgba(55,56,60,0.28); }
+    select.m-input { appearance: none; -webkit-appearance: none; padding-right: 40px;
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370737C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 20px; }
+    .m-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 48px; padding: 0 20px; border-radius: 12px;
+             font-size: 16px; font-weight: 600; line-height: 24px; transition: background-color .15s; }
+    .m-btn-primary { background: #0066FF; color: #fff; }
+    .m-btn-primary:hover:not(:disabled) { background: #005EEB; }
+    .m-btn-primary:active:not(:disabled) { background: #0054D1; }
+    .m-btn-primary:disabled { background: #F4F4F5; color: rgba(55,56,60,0.28); cursor: default; }
+    .m-btn-secondary { background: #fff; color: rgba(46,47,51,0.88); box-shadow: inset 0 0 0 1px rgba(112,115,124,0.22); }
+    .m-btn-secondary:hover { background: #F7F7F8; }
+    .m-btn-danger { background: #FF4242; color: #fff; }
+    .m-btn-danger:hover { filter: brightness(0.94); }
+    .m-card { background: #fff; border-radius: 16px; box-shadow: inset 0 0 0 1px rgba(112,115,124,0.08); }
+    .m-tab { padding: 12px 0 10px; font-size: 16px; line-height: 24px; font-weight: 600; color: rgba(55,56,60,0.61); white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; }
+    .m-tab:hover { color: #171719; }
+    .m-tab.active { color: #171719; box-shadow: inset 0 -2px 0 #171719; }
+    .m-opt { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 12px; cursor: pointer; background: #fff;
+             box-shadow: inset 0 0 0 1px rgba(112,115,124,0.22); transition: background-color .15s, box-shadow .15s; }
+    .m-opt input { width: 20px; height: 20px; accent-color: #0066FF; flex: 0 0 auto; margin: 0; }
+    .m-opt:has(input:checked) { background: #EAF2FE; box-shadow: inset 0 0 0 1.5px #0066FF; }
+    .m-step { width: 24px; height: 24px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: 0 0 24px; }
+    :focus-visible { outline: 2px solid #0066FF; outline-offset: 2px; }
   </style>
 </head>
 <body class="bg-slate-50">
@@ -165,7 +213,9 @@
     }
 
     function errorHtml(message) {
-      return '<div class="rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-sm px-4 py-3 mb-5">' + escapeHtml(message) + '</div>';
+      return '<div role="alert" class="flex items-start gap-2 rounded-lg bg-rose-50 text-rose-600 text-sm font-medium px-4 py-3 mb-5" style="box-shadow:inset 0 0 0 1px rgba(255,66,66,0.24)">' +
+        '<svg class="flex-none mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>' +
+        '<span>' + escapeHtml(message) + '</span></div>';
     }
 
     function loadingHtml(label) {
@@ -174,46 +224,48 @@
         '<p class="text-sm">' + escapeHtml(label || '불러오는 중입니다...') + '</p></div>';
     }
 
+    // label의 for 연결을 위해 innerHtml 안의 첫 id를 찾아 씁니다 (스크린리더·클릭 영역 개선)
     function formField(label, required, innerHtml, hint) {
+      var m = /id="([^"]+)"/.exec(innerHtml || '');
       return '<div class="mb-5">' +
-        '<label class="block text-sm font-semibold text-slate-700 mb-1.5">' + escapeHtml(label) +
+        '<label ' + (m ? 'for="' + m[1] + '" ' : '') + 'class="block text-sm font-semibold mb-2" style="color:rgba(46,47,51,0.88)">' + escapeHtml(label) +
         (required ? '<span class="text-rose-500 ml-0.5">*</span>' : '') + '</label>' +
         innerHtml +
-        (hint ? '<p class="mt-1 text-xs text-slate-400">' + escapeHtml(hint) + '</p>' : '') +
+        (hint ? '<p class="mt-1.5 text-xs font-medium" style="color:rgba(55,56,60,0.61)">' + escapeHtml(hint) + '</p>' : '') +
         '</div>';
     }
 
     function textInput(id, placeholder, type, value) {
-      return '<input id="' + id + '" type="' + (type || 'text') + '" ' +
-        'class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" ' +
+      return '<input id="' + id + '" type="' + (type || 'text') + '" class="m-input" ' +
         'placeholder="' + escapeHtml(placeholder || '') + '" value="' + escapeHtml(value || '') + '">';
     }
 
     function textArea(id, rows) {
-      return '<textarea id="' + id + '" rows="' + (rows || 3) + '" ' +
-        'class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>';
+      return '<textarea id="' + id + '" rows="' + (rows || 3) + '" class="m-input"></textarea>';
     }
 
     function selectHtml(id, optionsHtml) {
-      return '<select id="' + id + '" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">' + optionsHtml + '</select>';
+      return '<select id="' + id + '" class="m-input">' + optionsHtml + '</select>';
     }
 
     function primaryButton(id, label, extraClass, type) {
-      return '<button id="' + id + '" type="' + (type || 'submit') + '" class="px-4 py-2.5 rounded-lg font-medium text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-300 ' + (extraClass || '') + '">' + escapeHtml(label) + '</button>';
+      return '<button id="' + id + '" type="' + (type || 'submit') + '" class="m-btn m-btn-primary ' + (extraClass || '') + '">' + escapeHtml(label) + '</button>';
     }
 
     function secondaryLink(href, label) {
-      return '<a href="' + href + '" class="px-4 py-2.5 rounded-lg font-medium text-sm bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 inline-block">' + escapeHtml(label) + '</a>';
+      return '<a href="' + href + '" class="m-btn m-btn-secondary">' + escapeHtml(label) + '</a>';
     }
 
     function card(innerHtml, extraClass) {
-      return '<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8 ' + (extraClass || '') + '">' + innerHtml + '</div>';
+      return '<div class="m-card p-6 sm:p-8 ' + (extraClass || '') + '">' + innerHtml + '</div>';
     }
 
     function pageHeading(title, subtitle) {
-      return '<h2 class="text-lg font-bold text-slate-900 mb-1">' + escapeHtml(title) + '</h2>' +
-        (subtitle ? '<p class="text-sm text-slate-400 mb-6">' + escapeHtml(subtitle) + '</p>' : '<div class="mb-6"></div>');
+      return '<h1 class="text-[26px] sm:text-[32px] leading-[1.375] font-bold tracking-[-0.025em] text-slate-900 mb-1">' + escapeHtml(title) + '</h1>' +
+        (subtitle ? '<p class="text-base mb-6" style="color:rgba(46,47,51,0.88)">' + escapeHtml(subtitle) + '</p>' : '<div class="mb-6"></div>');
     }
+
+    var ICON_CHECK_CIRCLE = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>';
 
     // ----------------------------- 상단 탭 네비게이션 -----------------------------
     // 여러 화면(신청/수행보고/관리자)을 링크로 따로 찾아다니지 않도록,
@@ -226,38 +278,44 @@
         { key: 'report', label: '수행 보고서 제출', href: '#/report' },
         { key: 'admin', label: '관리자', href: isAdmin ? '#/admin/list' : '#/admin' }
       ];
-      var tabsHtml = tabs.map(function (t) {
-        var activeClass = (t.key === activeKey)
-          ? 'bg-slate-900 text-white'
-          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100';
-        return '<a href="' + t.href + '" class="px-4 py-2 rounded-full text-sm font-medium transition-colors ' + activeClass + '">' + escapeHtml(t.label) + '</a>';
+      // 신청/보고서는 Montage 탭(밑줄)으로, 관리자는 오른쪽 작은 링크로 분리합니다.
+      var tabsHtml = tabs.filter(function (t) { return t.key !== 'admin'; }).map(function (t) {
+        var on = t.key === activeKey;
+        return '<a href="' + t.href + '" class="m-tab' + (on ? ' active' : '') + '"' + (on ? ' aria-current="page"' : '') + '>' + escapeHtml(t.label) + '</a>';
       }).join('');
+      var adminTab = tabs[2];
 
-      var rightHtml = '';
+      var rightHtml;
       // 관리자 뱃지/로그아웃 버튼은 실제로 관리자 화면을 보고 있을 때만 노출합니다.
       // (세션 자체는 탭을 옮겨도 유지되지만, 신청/보고서 제출 같은 공개 화면에서는 표시하지 않습니다)
       if (isAdmin && activeKey === 'admin') {
-        rightHtml = '<div class="flex items-center gap-3">' +
-          '<span class="text-xs text-slate-400 hidden sm:inline">관리자 모드</span>' +
-          '<button id="navLogoutBtn" class="px-3 py-1.5 rounded-full text-sm border border-slate-300 text-slate-600 hover:bg-slate-50">로그아웃</button>' +
+        rightHtml = '<div class="ml-auto flex items-center gap-3 py-2">' +
+          '<span class="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md hidden sm:inline">관리자 모드</span>' +
+          '<button id="navLogoutBtn" class="text-sm font-medium px-3.5 py-1.5 rounded-lg" style="box-shadow:inset 0 0 0 1px rgba(112,115,124,0.22);color:rgba(46,47,51,0.88)">로그아웃</button>' +
           '</div>';
+      } else {
+        rightHtml = '<a href="' + adminTab.href + '" class="ml-auto py-3 text-sm font-medium whitespace-nowrap ' +
+          (activeKey === 'admin' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-700') + '">관리자</a>';
       }
 
-      return '<header class="bg-white border-b border-slate-100 sticky top-0 z-10">' +
-        '<div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">' +
-        '<div class="flex items-center gap-1 sm:gap-2 overflow-x-auto">' +
-        '<span class="mr-2 whitespace-nowrap text-sm">' + BRAND_LOGO_HTML + '</span>' +
-        '<nav class="flex items-center gap-1">' + tabsHtml + '</nav>' +
-        '</div>' + rightHtml +
+      // WANTED GROUND 안(iframe)에서 열리면 포털 상단 메뉴가 이미 있으니 로고 줄은 숨겨요.
+      var brandHtml = IS_EMBEDDED ? '' :
+        '<div class="h-14 flex items-center whitespace-nowrap text-sm">' + BRAND_LOGO_HTML + '</div>';
+
+      return '<header class="bg-white border-b border-slate-200/70 ' + (IS_EMBEDDED ? '' : 'sticky top-0 z-10') + '">' +
+        '<div class="max-w-5xl mx-auto px-4 sm:px-6">' + brandHtml +
+        '<nav class="flex items-end gap-6 overflow-x-auto" aria-label="팀 스터디 메뉴">' + tabsHtml + rightHtml + '</nav>' +
         '</div></header>';
     }
+
+    var IS_EMBEDDED = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
 
     /** 공통 페이지 레이아웃: 상단 탭 + 본문 영역 */
     function page(activeKey, bodyHtml, maxWidthClass) {
       maxWidthClass = maxWidthClass || 'max-w-3xl';
       return '<div class="min-h-screen bg-slate-50">' +
         navBar(activeKey) +
-        '<main class="' + maxWidthClass + ' mx-auto px-4 sm:px-6 py-8">' + bodyHtml + '</main>' +
+        '<main class="' + maxWidthClass + ' mx-auto px-4 sm:px-6 py-8 sm:py-10">' + bodyHtml + '</main>' +
         '</div>';
     }
 
@@ -348,21 +406,21 @@
     }
 
     function renderStudyPlanTableHtml() {
+      var trashIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
       var rowsHtml = studyPlanRows.map(function (row, i) {
         var removeBtn = studyPlanRows.length > 1
-          ? '<button type="button" class="remove-plan-row text-rose-400 hover:text-rose-600 text-sm" data-index="' + i + '">✕</button>'
-          : '';
-        return '<tr>' +
-          '<td class="px-3 py-2 font-medium text-slate-600 whitespace-nowrap border-t border-slate-100">' + (i + 1) + '주차</td>' +
-          '<td class="px-3 py-2 border-t border-slate-100"><input type="text" class="plan-content-input w-full rounded border border-slate-300 px-2 py-1.5 text-sm" data-index="' + i + '" value="' + escapeHtml(row.content || '') + '" placeholder="이번 주차 계획을 입력해주세요"></td>' +
-          '<td class="px-3 py-2 text-center border-t border-slate-100">' + removeBtn + '</td>' +
-          '</tr>';
+          ? '<button type="button" class="remove-plan-row w-11 h-11 flex-none rounded-[10px] inline-flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50" data-index="' + i + '" aria-label="' + (i + 1) + '주차 삭제">' + trashIcon + '</button>'
+          : '<span class="w-11 flex-none"></span>';
+        return '<div class="flex items-center gap-2 mb-2">' +
+          '<span class="w-14 flex-none text-sm font-semibold" style="color:rgba(46,47,51,0.88)">' + (i + 1) + '주차</span>' +
+          '<input type="text" class="plan-content-input m-input" data-index="' + i + '" value="' + escapeHtml(row.content || '') + '" placeholder="이번 주차 계획을 입력해주세요" aria-label="' + (i + 1) + '주차 계획">' +
+          removeBtn +
+          '</div>';
       }).join('');
 
-      return '<table class="w-full text-sm border border-slate-200 rounded-lg overflow-hidden mb-2">' +
-        '<thead><tr class="bg-slate-50 text-slate-500 text-left"><th class="px-3 py-2 w-20">주차</th><th class="px-3 py-2">계획 내용</th><th class="w-10"></th></tr></thead>' +
-        '<tbody id="studyPlanBody">' + rowsHtml + '</tbody></table>' +
-        '<button type="button" id="addPlanRowBtn" class="text-sm text-blue-600 hover:underline">+ 주차 추가</button>';
+      return '<div id="studyPlanBody">' + rowsHtml + '</div>' +
+        '<button type="button" id="addPlanRowBtn" class="m-btn w-full mt-1 text-[15px] text-blue-600 hover:bg-slate-50" style="box-shadow:inset 0 0 0 1px rgba(112,115,124,0.22)">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>주차 추가</button>';
     }
 
     function wireStudyPlanEvents() {
@@ -527,38 +585,59 @@
       var courseOptions = await loadCourseOptionsHtml();
       resetStudyPlanRows();
 
+      function section(title, sub, inner) {
+        return '<section class="m-card p-6">' +
+          '<div class="flex items-baseline gap-2 mb-5"><h2 class="text-lg font-semibold text-slate-900">' + escapeHtml(title) + '</h2>' +
+          (sub ? '<span class="text-[13px] font-medium" style="color:rgba(55,56,60,0.61)">' + escapeHtml(sub) + '</span>' : '') + '</div>' +
+          inner + '</section>';
+      }
+
       var supportSection =
-        '<details class="border border-slate-200 rounded-lg p-3.5">' +
-        '<summary class="cursor-pointer text-sm font-medium text-slate-700">희망 지원 항목 선택 (선택)</summary>' +
-        '<div class="mt-3 space-y-2 pl-1">' +
-        '<label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" id="f_support_meal" value="식사 지원(1회에 한함)"> 식사 지원 (1회에 한함)</label>' +
-        '<label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" id="f_support_book" value="도서 지원"> 도서 지원</label>' +
-        '<div id="bookTitleWrap" class="hidden pt-2">' +
-        formField('도서명', true, textInput('f_bookTitle', '(도서 지원 선택 시) 도서명을 기재해주세요')) +
+        '<div class="grid gap-2 sm:grid-cols-2">' +
+        '<label class="m-opt"><input type="checkbox" id="f_support_meal" value="식사 지원(1회에 한함)">' +
+        '<span><span class="block text-[15px] font-semibold text-slate-900">식사 지원</span><span class="block text-[13px] font-medium" style="color:rgba(55,56,60,0.61)">1회에 한해 지원돼요</span></span></label>' +
+        '<label class="m-opt"><input type="checkbox" id="f_support_book" value="도서 지원">' +
+        '<span><span class="block text-[15px] font-semibold text-slate-900">도서 지원</span><span class="block text-[13px] font-medium" style="color:rgba(55,56,60,0.61)">스터디 교재를 지원해요</span></span></label>' +
         '</div>' +
-        '</div></details>';
+        '<div id="bookTitleWrap" class="hidden pt-4">' +
+        formField('도서명', true, textInput('f_bookTitle', '(도서 지원 선택 시) 도서명을 기재해주세요')) +
+        '</div>';
+
+      var guideAside =
+        '<aside class="m-card p-5 lg:sticky lg:top-6">' +
+        '<p class="text-base font-semibold text-slate-900 mb-4">진행 순서</p>' +
+        '<ol class="space-y-3.5">' +
+        '<li class="flex gap-3 items-start"><span class="m-step bg-blue-600 text-white">1</span><span class="text-sm leading-[22px]" style="color:rgba(46,47,51,0.88)"><b class="text-slate-900">신청</b> · 팀 정보와 주차별 계획을 제출해요</span></li>' +
+        '<li class="flex gap-3 items-start"><span class="m-step bg-blue-50 text-blue-800">2</span><span class="text-sm leading-[22px]" style="color:rgba(46,47,51,0.88)"><b class="text-slate-900">승인</b> · 관리자가 확인한 뒤 승인해요</span></li>' +
+        '<li class="flex gap-3 items-start"><span class="m-step bg-blue-50 text-blue-800">3</span><span class="text-sm leading-[22px]" style="color:rgba(46,47,51,0.88)"><b class="text-slate-900">수행 보고서</b> · 4주 종료 후 결재 문서에 보고서를 첨부해요</span></li>' +
+        '</ol></aside>';
 
       var bodyHtml = pageHeading('팀 스터디 신청', '아래 정보를 입력해 팀 스터디를 신청해주세요.') +
-        card(
-          '<div id="formError"></div>' +
-          '<form id="applyForm">' +
+        '<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] items-start">' +
+        '<form id="applyForm" class="space-y-4" novalidate>' +
+        '<div id="formError"></div>' +
+        section('신청자', '',
+          '<div class="grid gap-x-4 sm:grid-cols-2">' +
           formField('참여 과정', true, selectHtml('f_courseName', courseOptions.html)) +
           formField('이름', true, textInput('f_applicantName', '이름을 입력해주세요')) +
+          '</div>') +
+        section('스터디 정보', '',
+          '<div class="grid gap-x-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">' +
           formField('스터디명', true, textInput('f_studyName', '스터디명을 입력해주세요')) +
           formField('인원수', true,
             '<div class="flex items-center gap-2">' +
-            '<input id="f_memberCount" type="number" min="1" class="w-28 rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="4">' +
-            '<span class="text-sm text-slate-500">명</span></div>'
+            '<input id="f_memberCount" type="number" min="1" class="m-input" placeholder="4">' +
+            '<span class="text-[15px] flex-none" style="color:rgba(55,56,60,0.61)">명</span></div>'
           ) +
+          '</div>' +
           formField('스터디 소개 및 목표', true, textArea('f_introGoal', 4)) +
-          formField('팀원 명단', true, textInput('f_memberList', '예: 홍길동, 김철수, 이영희')) +
-          '<div class="mb-5">' + supportSection + '</div>' +
-          formField('스터디 계획서', true, '<div id="studyPlanWrap">' + renderStudyPlanTableHtml() + '</div>') +
-          '<div class="pt-2">' + primaryButton('applySubmitBtn', '신청하기', 'w-full') + '</div>' +
-          '</form>'
-        );
+          formField('팀원 명단', true, textInput('f_memberList', '예: 홍길동, 김철수, 이영희'), '쉼표(,)로 구분해 입력해주세요')) +
+        section('희망 지원 항목', '선택', supportSection) +
+        section('스터디 계획서', '주차별 계획을 적어주세요', '<div id="studyPlanWrap">' + renderStudyPlanTableHtml() + '</div>') +
+        primaryButton('applySubmitBtn', '신청하기', 'w-full !h-14 text-[17px]') +
+        '</form>' + guideAside + '</div>';
 
-      setApp(page('apply', bodyHtml));
+      setApp(page('apply', bodyHtml, 'max-w-5xl'));
       wireCommonEvents();
       wireStudyPlanEvents();
 
@@ -675,12 +754,12 @@
       }
 
       var bodyHtml = card(
-        '<div class="text-4xl mb-4">✅</div>' +
-        '<h2 class="text-lg font-bold text-slate-900 mb-2">신청이 완료되었습니다</h2>' +
+        '<div class="mx-auto mb-4 w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">' + ICON_CHECK_CIRCLE + '</div>' +
+        '<h2 class="text-xl font-bold text-slate-900 mb-2">신청이 완료되었습니다</h2>' +
         '<p class="text-sm text-slate-500 mb-1">신청번호 <span class="font-semibold text-blue-600">' + escapeHtml(id) + '</span></p>' +
-        '<p class="text-sm text-slate-500 mb-4">관리자 승인 후 수행보고를 제출할 수 있어요.</p>' +
+        '<p class="text-sm text-slate-500 mb-4">관리자 승인 후 수행 보고서를 제출할 수 있어요.</p>' +
         pdfLinkHtml +
-        '<div class="flex justify-center gap-2">' +
+        '<div class="flex flex-wrap justify-center gap-2">' +
         secondaryLink('#/', '신청 페이지로') +
         secondaryLink('#/report', '수행보고 제출 페이지로') +
         '</div>',
@@ -696,11 +775,12 @@
     function reportGuideHtml() {
       var reportDocUrl = 'https://docs.google.com/presentation/d/1X3nASa0bEysl5wPgT1QbVbvA03iGpmzzcfU5fxDCxNw/edit?slide=id.g3bd17f2a1a0_0_0#slide=id.g3bd17f2a1a0_0_0';
       var reportDocLabel = 'https://docs.google.com/document/d/1ynJSPKimUEV_DUir-9XN2adY_wtAfQEJ7CCeuwt9gb8/edit?usp=sharing';
-      return '<div class="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 mb-5">' +
-        '<p>스터디 진행 시 작성해주시고, 4주 종료 후 해당 결재 문서에 보고서 파일을 첨부해 주세요.</p>' +
+      return '<div class="flex gap-3 rounded-2xl px-5 py-4 mb-5 text-sm leading-[22px]" style="background:#FFF6EB;color:#6B3D00;box-shadow:inset 0 0 0 1px rgba(255,146,0,0.24)">' +
+        '<svg class="flex-none mt-0.5" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C26F00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>' +
+        '<div><p>스터디 진행 시 작성해주시고, 4주 종료 후 해당 결재 문서에 보고서 파일을 첨부해 주세요.</p>' +
         '<p class="mt-2">보고서 링크(사본 생성 후 사용):<br>' +
-        '<a href="' + reportDocUrl + '" target="_blank" rel="noreferrer" class="underline hover:text-amber-900 break-all">' + escapeHtml(reportDocLabel) + '</a></p>' +
-        '</div>';
+        '<a href="' + reportDocUrl + '" target="_blank" rel="noreferrer" class="font-semibold underline break-all" style="color:#0054D1">' + escapeHtml(reportDocLabel) + '</a></p>' +
+        '</div></div>';
     }
 
     function validateFile(file) {
@@ -842,14 +922,15 @@
 
       var innerBody;
       if (alreadyDone) {
-        innerBody = '<p class="text-center text-sm text-slate-500 py-10">✅ 수행보고가 제출되었습니다. 관리자 확인 후 완료 처리됩니다.</p>';
+        innerBody = '<div class="text-center py-10"><div class="mx-auto mb-3 w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">' + ICON_CHECK_CIRCLE + '</div>' +
+          '<p class="text-sm text-slate-500">수행보고가 제출되었습니다. 관리자 확인 후 완료 처리됩니다.</p></div>';
       } else if (!canSubmit) {
         innerBody = '<p class="text-center text-sm text-slate-500 py-10">승인된 신청만 수행보고를 제출할 수 있습니다. (현재 상태: ' + escapeHtml(application.status) + ')</p>';
       } else {
         innerBody = '<div id="reportFormError"></div>' +
           '<form id="reportForm">' +
           formField('수행보고 내용', true, textArea('f_reportContent', 6)) +
-          formField('결과 파일', false, '<input type="file" id="f_reportFile" accept=".pdf" class="text-sm">', 'PDF 파일 첨부 (선택, 최대 10MB)') +
+          formField('결과 파일', false, '<input type="file" id="f_reportFile" accept=".pdf" class="block w-full text-sm text-slate-600 file:mr-3 file:h-10 file:px-4 file:rounded-[10px] file:border-0 file:bg-slate-100 file:text-slate-800 file:font-semibold hover:file:bg-slate-200">', 'PDF 파일 첨부 (선택, 최대 10MB)') +
           '<div class="pt-2">' + primaryButton('reportSubmitBtn', '수행보고 제출하기', 'w-full') + '</div>' +
           '</form>';
       }
@@ -1003,9 +1084,9 @@
           '<tbody>' + rows + '</tbody></table></div>';
       }
 
-      var headerRow = '<div class="flex items-center justify-between mb-4">' +
-        pageHeading('스터디 신청 관리', '전체 ' + applications.length + '건') +
-        '<button id="reloadBtn" class="px-4 py-2.5 rounded-lg font-medium text-sm bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 h-fit">새로고침</button>' +
+      var headerRow = '<div class="flex items-end justify-between gap-4 mb-2">' +
+        '<div>' + pageHeading('스터디 신청 관리', '전체 ' + applications.length + '건') + '</div>' +
+        '<button id="reloadBtn" class="m-btn m-btn-secondary !h-11 !text-[15px] mb-6">새로고침</button>' +
         '</div>';
 
       setApp(page('admin', headerRow + tableHtml, 'max-w-5xl'));
